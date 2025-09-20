@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMR Evaluator</title>
+    <!-- Use a modern, easy-to-read font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS from CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+
+    <!-- Main Container -->
+    <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-4xl w-full mx-auto my-8 space-y-8">
+        <!-- Header Section -->
+        <div class="text-center">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-blue-800 mb-2">Automated OMR Evaluator</h1>
+            <p class="text-gray-600 text-lg">Fast and accurate test grading with AI-powered feedback.</p>
+        </div>
+
+        <!-- File Upload Section -->
+        <div id="upload-section" class="border-4 border-dashed border-gray-300 rounded-2xl p-6 transition-all duration-300 hover:border-blue-500 hover:shadow-lg">
+            <label for="file-upload" class="cursor-pointer text-center block">
+                <div class="flex flex-col items-center justify-center p-4">
+                    <svg class="w-16 h-16 text-gray-400 mb-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-4-4v-1a4 4 0 014-4h14a4 4 0 014 4v1a4 4 0 01-4 4H7zM16 16v-4m-4-4l4 4m0 0l-4 4"></path>
+                    </svg>
+                    <span class="text-xl font-semibold text-gray-700">Drag & Drop your OMR Image here</span>
+                    <span class="text-sm text-gray-500 mt-2">or click to browse</span>
+                    <p class="text-xs text-gray-400 mt-2">Accepted formats: .jpg, .jpeg, .png</p>
+                </div>
+            </label>
+            <input id="file-upload" type="file" accept=".jpg,.jpeg,.png" class="hidden" />
+        </div>
+        
+        <!-- Processing/Loading Indicator -->
+        <div id="loading" class="hidden text-center">
+            <div class="flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
+                <p class="text-gray-600 font-semibold">Processing your sheet...</p>
+                <p class="text-gray-500 text-sm mt-1">This might take a moment.</p>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden bg-gray-50 rounded-2xl p-6 shadow-inner border border-gray-200">
+            <div class="text-center mb-6">
+                <h2 class="text-3xl font-bold text-green-700">Evaluation Complete!</h2>
+                <p class="text-gray-600">Here are the results and personalized feedback.</p>
+            </div>
+
+            <!-- Score Display -->
+            <div class="flex items-center justify-center mb-6">
+                <div class="text-center bg-blue-100 rounded-full p-4 w-32 h-32 flex flex-col items-center justify-center shadow-lg">
+                    <p class="text-5xl font-bold text-blue-800" id="score-display"></p>
+                    <p class="text-sm font-medium text-blue-600">Score</p>
+                </div>
+            </div>
+            
+            <!-- User Answers and Answer Key -->
+            <div class="bg-white rounded-xl shadow-md p-4 mb-6">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">Your Answers</h3>
+                <div id="answers-container" class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <!-- Dynamic answers will be inserted here -->
+                </div>
+            </div>
+
+            <!-- AI Feedback Section -->
+            <div class="bg-white rounded-xl shadow-md p-4">
+                <h3 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">AI-Powered Feedback</h3>
+                <p id="ai-feedback" class="text-gray-700 leading-relaxed text-base"></p>
+            </div>
+        </div>
+
+        <!-- Error Message Section -->
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline" id="error-text">Something went wrong. Please try again.</span>
+        </div>
+    </div>
+
+    <script>
+        // DOM element references
+        const fileUpload = document.getElementById('file-upload');
+        const uploadSection = document.getElementById('upload-section');
+        const loadingSection = document.getElementById('loading');
+        const resultsSection = document.getElementById('results');
+        const errorMessage = document.getElementById('error-message');
+        const scoreDisplay = document.getElementById('score-display');
+        const answersContainer = document.getElementById('answers-container');
+        const aiFeedback = document.getElementById('ai-feedback');
+
+        // Function to handle the file upload and API call
+        async function uploadFile(file) {
+            // Hide previous results and errors, show loading spinner
+            resultsSection.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+
+            const formData = new FormData();
+            formData.append('omr_image', file);
+
+            try {
+                // Send the image to the backend
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || "Server error occurred.");
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('error-text').textContent = error.message;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                // Hide loading spinner
+                loadingSection.classList.add('hidden');
+            }
+        }
+
+        function displayResults(data) {
+            // Populate the results section with data from the backend
+            scoreDisplay.textContent = `${data.score}/${data.total_questions}`;
+            aiFeedback.textContent = data.ai_feedback;
+            answersContainer.innerHTML = ''; // Clear previous answers
+
+            // Loop through each question to create answer cards
+            for (const [question, userAnswer] of Object.entries(data.detected_answers)) {
+                const correctAnswer = data.answer_key[question];
+                const isCorrect = userAnswer === correctAnswer;
+
+                const card = document.createElement('div');
+                card.classList.add('bg-gray-100', 'p-3', 'rounded-xl', 'shadow-sm', 'transition-transform', 'hover:scale-105', 'duration-200');
+
+                // Determine styling based on correctness
+                if (isCorrect) {
+                    card.classList.add('border-2', 'border-green-500');
+                } else {
+                    card.classList.add('border-2', 'border-red-500');
+                }
+
+                card.innerHTML = `
+                    <p class="text-sm font-medium text-gray-500">Question ${question}</p>
+                    <p class="text-xl font-bold mt-1 ${isCorrect ? 'text-green-600' : 'text-red-600'}">${userAnswer}</p>
+                    ${!isCorrect ? `<p class="text-xs text-gray-500">Correct: ${correctAnswer}</p>` : ''}
+                `;
+                answersContainer.appendChild(card);
+            }
+
+            // Show the results section
+            resultsSection.classList.remove('hidden');
+        }
+
+        // Event listeners for file upload
+        fileUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+
+        // Event listeners for drag-and-drop
+        uploadSection.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            uploadSection.classList.add('border-blue-500', 'shadow-lg');
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('border-blue-500', 'shadow-lg');
+        });
+
+        uploadSection.addEventListener('drop', (event) => {
+            event.preventDefault();
+            uploadSection.classList.remove('border-blue-500', 'shadow-lg');
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+
+    </script>
+</body>
+</html>
